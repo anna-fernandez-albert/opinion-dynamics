@@ -3,10 +3,10 @@
 This repository contains the implementation and analysis of an agent-based opinion dynamics model that integrates community structure and social reinforcement mechanisms. The model is inspired by the Multiscale Voter Model (MVM), and it explores how network topology and local/global interaction rules shape opinion formation and the emergence of consensus.
 
 ## Installation Requierments
-Julia ≥ 1.6
-Python ≥ 3.7 (used via PyCall for network generation)
-Required Julia packages: Statistics, Graphs, PyCall
-Required Python packages: networkx, numpy
+- Julia ≥ 1.6
+- Python ≥ 3.7 (used via PyCall for network generation)
+- Required Julia packages: Statistics, Graphs, PyCall
+- Required Python packages: networkx, numpy
 
 ## Usage
 The entry point of the project is the `main.jl` file.
