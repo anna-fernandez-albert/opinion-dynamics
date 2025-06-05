@@ -1,35 +1,153 @@
 module LFRAnalysis
 
-include("./model_simulation.jl")
+include("../constants.jl")
 include("../utils/lfr_generator.jl")
-include("../utils/network_utils.jl")
+include("../model/opinion_dynamics.jl")
+
 using PyCall
 using Statistics
-using .OpinionSimulation
+
 using .LFRGenerator
-using .NetworkUtils
+using .OpinionDynamics
 
 export run_lfr_analysis
 #-----------------------------------------------------------------------------------------------------------------------------------
 function run_lfr_analysis()
-    
-    N = [100, 200, 300, 400, 500]
-    μ = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
-    k_avg = [5, 10, 15, 20, 25]
-    
     # Create networks
-    networks = LFRGenerator.generate_lfr_networks(N, μ, k_avg)
+    networks = LFRGenerator.generate_lfr_networks(N_VALUES, μ_VALUES, k_avg_VALUES)
+    common_plots_path = "$PATH_TO_PLOTS/$(SENSITIVITY_ANALYSIS)"
 
-    results = Dict()
-    for (name, network) in networks
-        println("Executant simulació i anàlisi per a '$name'...")
-        results[name] = OpinionSimulation.run_model_analysis(
-            network["network"], 
-            network["communities"], 
-            "lfr_$(name)"
-        )
-    end
+    open("$PATH_TO_RESULTS/$(LFR_ANALYSIS).csv", "a") do file
+        write(file, "N,μ,k_avg,modularity,assortativity,clustering_coefficient,std_dev_community_size,av_path_length,λ,trust_level,t_execution,consensus,consensus_per_community,polarization_between_communities,flip_fraction\n")
     
-    return networks, results
+        results = []
+        for (parameters, network) in networks
+            N, μ, k_avg = parameters
+            graph, communities = network["graph"], network["communities"]
+            
+            # Define number of steps and tolerance steps
+            NUM_STEPS = 100 * N
+            TOLERANCE_STEPS = 5 * N
+            
+            # Compute Network Properties
+            modularity, assortativity, clustering_coefficient, std_dev_community_size, av_path_length = compute_network_properties(graph, communities)
+            
+            for λ in λ_VALUES
+                for trust_level in LOCAL_TRUST_VALUES
+                    println("Running analysis for network with parameters N=$(N), μ=$(μ), k_avg=$(k_avg), λ=$(λ), trust_level=$(trust_level)")
+
+                    # Initialize opinions
+                    initial_opinions = OpinionDynamics.initialize_opinions(communities, OPINION_VALUES, PROBABILITY_MAJORITY_OPINION)
+
+                    # Run simulation
+                    opinion_history, t_execution = OpinionDynamics.run_simulation(graph, initial_opinions, communities, NUM_STEPS, GLOBAL_PERIOD, λ, trust_level, TOLERANCE_STEPS, GLOBAL_INFLUENCE)
+                    
+                    consensus, consensus_per_community, polarization_between_communities, flip_fraction = compute_dynamics_results(opinion_history, communities, TOLERANCE_STEP, graph) 
+                    
+                    
+                    write(file, "$(N),$(μ),$(k_avg),$(modularity),$(assortativity),$(clustering_coefficient),$(std_dev_community_size),$(av_path_length),$(λ),$(trust_level),$(t_execution),$(consensus),$(consensus_per_community),$(polarization_between_communities),$(flip_fraction)\n")
+                    
+                    # Store results
+                    push!(results, Dict(
+                        "N" => N,
+                        "μ" => μ,
+                        "k_avg" => k_avg,
+                        "modularity" => modularity,
+                        "assortativity" => assortativity,
+                        "clustering_coefficient" => clustering_coefficient,
+                        "std_dev_community_size" => std_dev_community_size,
+                        "av_path_length" => av_path_length,
+                        "λ" => λ,
+                        "trust_level" => trust_level,
+                        "t_execution" => t_execution,
+                        "consensus" => consensus,
+                        "consensus_per_community" => consensus_per_community,
+                        "polarization_between_communities" => polarization_between_communities,
+                        "flip_fraction" => flip_fraction
+                    ))
+                end
+            end
+        end
+    end
+
+    correlations = compute_network_correlations(results)
+    Visualization.plot_correlation_bars(correlations, "$(common_plots_path)/correlations.png")
+    Visualization.plot_consensus_vs_mu(results, "$(common_plots_path)/consensus_vs_mu.png")
+    Visualization.plot_consensus_vs_assortativity(results, "$(common_plots_path)/consensus_vs_assortativity.png")
+    Visualization.plot_consensus_vs_av_path_length(results, "$(common_plots_path)/consensus_vs_av_path_length.png")
+    Visualization.plot_polarization_vs_modulatity(results, "$(common_plots_path)/polarization_vs_modularity.png")
+    Visualization.plot_density_consensus_heatmap(results, "$(common_plots_path)/consensus_heatmap.png")
+
+    # Visualize trust level and λ influence on consensus and stability
+    Visualization.plot_consensus_vs_lambda_different_net(results, "$(common_plots_path)/consensus_vs_lambda.png")
+    Visualization.plot_consensus_vs_trust_level_different_net(results, "$(common_plots_path)/consensus_vs_trust_level.png")
+    Visualization.plot_fluctuant_vs_lambda_different_net(results, "$(common_plots_path)/fluctuant_vs_lambda.png")
+    Visualization.plot_fluctuant_vs_trust_level_different_net(results, "$(common_plots_path)/fluctuant_vs_trust_level.png")
+    Visualization.heatmap_consensus_lambda_tau(results, "$(common_plots_path)/heatmap_consensus_lambda_tau.png")
 end
+
+#-----------------------------------------------------------------------------------------------------------------------------------
+function compute_network_properties(graph, communities)
+    modularity = nx.algorithms.community.quality.modularity(graph, communities)
+    assortativity = nx.degree_assortativity_coefficient(graph)
+    clustering_coefficient = nx.average_clustering(graph)
+    std_dev_community_size = std([length(comm) for comm in communities])
+    av_path_length = nx.average_shortest_path_length(graph)
+
+    return modularity, assortativity, clustering_coefficient, std_dev_community_size, av_path_length
+end
+#-----------------------------------------------------------------------------------------------------------------------------------
+function compute_dynamics_results(opinion_history, communities, tolerance_steps, graph)
+    # Final State of the Simulation
+    final_state = opinion_history[end, :]
+
+    # Compute consensus and polarization
+    consensus = abs(mean(final_state))
+    consensus_per_community = mean([abs(mean(final_state[comm])) for comm in communities])
+
+    # Polarization between communities
+    global_avg = mean(final_state)
+    polarization_between_communities = mean([abs(mean(final_state[comm]) - global_avg) for comm in communities])
+
+    # Flip fraction
+    # For the last tolerance steps, create a dictionary where the key is the node index and the value is a list of the opinion at that step
+    n_nodes = graph.number_of_nodes()
+    flip_analysis = Dict{Int, Vector{Float64}}(node => Float64[] for node in 1:n_nodes)
+    start_step = max(1, t_execution - tolerance_steps + 1)
+    for step in start_step:t_execution
+        for node in 1:n_nodes
+            push!(flip_analysis[node], opinion_history[step, node])
+        end
+    end
+
+    # Calculate the fraction of nodes that flipped their opinion in the last tolerance steps
+    flip_fraction = 0.0
+    for (node, opinions) in flip_analysis
+        all_values_equal = all(opinions .== opinions[1])
+        if !all_values_equal
+            flip_fraction += 1.0
+        end
+    end
+    flip_fraction /= n_nodes
+    
+    return consensus, consensus_per_community, polarization_between_communities, flip_fraction
+end
+#-----------------------------------------------------------------------------------------------------------------------------------
+function compute_network_correlations(results)
+    # Compute correlations between network properties and dynamics results
+    correlations = Dict{String, Float64}()
+
+    for key in ["modularity", "assortativity", "clustering_coefficient", "std_dev_community_size", "av_path_length"]
+        values = [r[key] for r in results]
+        dynamics_values = [r["consensus"] for r in results]
+        correlations[key] = cor(values, dynamics_values)
+    end
+
+    println("Correlations between network properties and dynamics results:")
+    for (key, value) in correlations
+        println("  $key: $value")
+    end
+    return correlations
+end
+#-----------------------------------------------------------------------------------------------------------------------------------
 end

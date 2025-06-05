@@ -1,172 +1,160 @@
 module ModelAnalysis
-include("../analysis/polarization.jl")
+include("../constants.jl")
+include("../utils/network_utils.jl")
+include("../model/opinion_dynamics.jl")
 include("../visualization/opinion_plots.jl")
 using PyCall
 using Statistics
 using Graphs
 
-using .PolarizationAnalysis
-using .Plots
+using .NetworkUtils
+using .OpinionDynamics
+using .Visualization
 
-export run_model_sensitibily_analysis
+export run_model_sensibility_analysis
 #-----------------------------------------------------------------------------------------------------------------------------------
-const OPINION_VALUE = [-1, 1]
-const GLOBAL_INFLUENCE = 1.0
-const TRUST_LEVEL = 0.3
-const NUM_STEPS = 100000
-#-----------------------------------------------------------------------------------------------------------------------------------
-function run_model_sensitibily_analysis(graph, communities)
-    λ_values = [0.1, 0.3, 0.5, 0.7, 0.9] # Sensitivity to opinion distance influence in the opinion interaction
-    trust_values = [0.1, 0.2, 0.3, 0.4, 0.5] # Trust level for local interactions. If the trust level is low, the node will be more influenced by nodes of the same community
-    global_period_influence = [500, 1500, 3000, 5000] # Global influence period. The global influence is applied every X steps
-    probability_majority_opinion = [0.1, 0.3, 0.5, 0.7, 0.9, 1.0]  # Probability of a node adopting the majority opinion of its community
+function run_model_sensibility_analysis(graph, communities, name)
+
+    common_plots_path = "$PATH_TO_PLOTS/$(SENSITIVITY_ANALYSIS)"
+    size = graph.number_of_nodes()
+    NUM_STEPS = 100 * size
+    TOLERANCE_STEPS = 5 * size
+        
+    results = []
+    open("$PATH_TO_RESULTS/$(SENSITIVITY_ANALYSIS)_$(name).csv", "a") do file
+        write(file, "λ,trust_value,global_period_value,prob_majority_opinon,t_execution,consensus,fraction_positive_final,fraction_negative_final,flip_fraction,constant_positive_fraction,constant_negative_fraction\n")
     
-    results = Dict()
-    for λ_val in λ_values
-        for trust_val in trust_values
-            for gp_val in global_period_influence
-                for pmo_val in probability_majority_opinion
-                    PROBABILITY_MAJORITY_OPINION = pmo_val
-                    GLOBAL_PERIOD = gp_val
-                    TRUST_LEVEL = trust_val
-                    λ = λ_val
-                    println("Running simulation with λ=$λ_val, trust=$trust_val, gp=$gp_val, pmo=$pmo_val\n\n")
+        for λ_val in λ_VALUES
+            for trust_val in LOCAL_TRUST_VALUES
+                for gp_val in GLOBAL_INFLUENCE_PERIODS
+                    for pmo_val in PROB_MAJORITY_OPINION_VALUES
+                        println("\n\nRunning simulation with λ=$λ_val, trust=$trust_val, gp=$gp_val, pmo=$pmo_val\n")
+                        println("The number of steps is: ", NUM_STEPS, " - Number of interactions per node: ", NUM_STEPS / size)
 
-                    opinions = initialize_opinions(communities, PROBABILITY_MAJORITY_OPINION)
+                        initial_opinions = OpinionDynamics.initialize_opinions(communities, OPINION_VALUES, pmo_val)
 
-                    convergence_step, final_opinions, opinion_history = run_simulation(graph, opinions, communities, NUM_STEPS, GLOBAL_PERIOD, λ, TRUST_LEVEL)
-                    
-                    # Compute final results
-                    final_variance = var(collect(values(final_opinions)))
-                    polarization_index = PolarizationAnalysis.calculate_polarization(final_opinions)
-                    consensus_level = 1.0 - length(unique(values(final_opinions))) / length(final_opinions)
+                        opinion_history, t_execution = OpinionDynamics.run_simulation(graph, initial_opinions, communities, NUM_STEPS, gp_val, λ_val, trust_val, TOLERANCE_STEPS, GLOBAL_INFLUENCE)
+                        
+                        consensus, fraction_positive_final, fraction_negative_final, flip_fraction, constant_positive_fraction, constant_negative_fraction, inestability_dict = compute_metrics(graph, opinion_history, t_execution, TOLERANCE_STEPS)
+                        
+                        write(file, "$λ_val,$trust_val,$gp_val,$pmo_val,$t_execution,$consensus,$fraction_positive_final,$fraction_negative_final,$flip_fraction,$constant_positive_fraction,$constant_negative_fraction\n")
 
-                    key = (λ_val, trust_val, gp_val, pmo_val)
-                    results[key] = Dict(
-                        "convergence_step" => convergence_step,
-                        "final_variance" => final_variance,
-                        "polarization" => polarization_index,
-                        "consensus_level" => consensus_level
-                    )
+                        #Visualization.plot_opinion_evolution(opinion_history, "$(common_plots_path)/opinion_evolution_λ_$(λ_val)_trust_$(trust_val)_gp_$(gp_val)_pmo_$(pmo_val).png")
+                        push!(results, Dict(
+                            "λ" => λ_val,
+                            "trust_value" => trust_val,
+                            "global_period_value" => gp_val,
+                            "prob_majority_opinion" => pmo_val,
+                            "t_execution" => t_execution,
+                            "consensus" => consensus,
+                            "fraction_positive_final" => fraction_positive_final,
+                            "fraction_negative_final" => fraction_negative_final,
+                            "flip_fraction" => flip_fraction,
+                            "constant_positive_fraction" => constant_positive_fraction,
+                            "constant_negative_fraction" => constant_negative_fraction,
+                            "inestability_dict" => inestability_dict
+                        ))
+                    end
                 end
             end
         end
     end
     
-    Plots.visualize_parameter_sensitivity(results)
-    return results
-end
-#-----------------------------------------------------------------------------------------------------------------------------------
-function run_simulation(graph, opinions, communities, max_steps, GLOBAL_PERIOD, λ, TRUST_LEVEL)
-    local_opinions = Dict(k => v for (k, v) in opinions)
-    
-    # Inicialitzar l'historial d'opinions
-    size = graph.number_of_nodes()
-    opinion_history = zeros(max_steps, size)
-    
-    convergence_step = max_steps
-    
-    for step in 1:max_steps
-        if different_opinions(local_opinions)
-            # Interaccions locals
-            node = rand(collect(graph.nodes()))
-            local_interaction_update!(graph, local_opinions, node, communities, TRUST_LEVEL, λ)
-    
-            # Influència global (periòdica)
-            if step % GLOBAL_PERIOD == 0
-                global_influence_update!(graph, local_opinions, communities, GLOBAL_INFLUENCE, λ, TRUST_LEVEL)
-            end
-    
-            # Registrar opinions
-            opinion_values = [local_opinions[string(i)] for i in 1:size]
-            opinion_history[step, :] .= opinion_values
-        else
-            convergence_step = step
-            break
-        end
-    end
-    
-    return convergence_step, local_opinions, opinion_history
-end
-#-----------------------------------------------------------------------------------------------------------------------------------
-function MVM(communities, opinions, node, λ)
-    Pi = 0
-    community_opinion = 0.0
+    # Compute parameter sensibility - correlation between parameters and results - visualization
+    correlations = compute_correlations(results)
+    println("Correlations: $(correlations)")
+    Visualization.plot_correlation_bars(correlations, "$(common_plots_path)/correlation_bars.png")
+    Visualization.heatmap_consensus_lambda_tau(results, "$(common_plots_path)/heatmap_consensus_lambda_tau.png")
+    Visualization.plot_execution_vs_T(results, "$(common_plots_path)/stability_vs_T.png")
+    Visualization.plot_fluctuant_vs_tau(results, "$(common_plots_path)/tau_vs_fluctuant.png")
+    Visualization.plot_fluctuant_vs_lambda(results, "$(common_plots_path)/lambda_vs_fluctuant.png")
+    Visualization.plot_consensus_vs_tau(results, "$(common_plots_path)/tau_vs_consensus.png")
+    Visualization.plot_consensus_vs_lambda(results, "$(common_plots_path)/lambda_vs_consensus.png")
 
-    # Compute community opinion
-    for comm in communities
-        if node in comm
-            community_opinion = sum([opinions[l] for l in comm if l != node]) / (length(comm) - 1)
-            break
+    # Visualize fluctuation analysis for instable nodes
+    visualize_fluctuation_analysis(graph, results, common_plots_path)
+end
+#-----------------------------------------------------------------------------------------------------------------------------------
+function compute_metrics(graph, opinion_history, t_execution, tolerance_steps)
+    final_state = opinion_history[end, :]
+
+    consensus = abs(mean(final_state))
+    fraction_positive_final = mean(final_state .> 0)
+    fraction_negative_final = mean(final_state .< 0)
+
+    # For the last tolerance steps, create a dictionary where the key is the node index and the value is a list of the opinion at that step
+    flip_analysis = Dict{Int, Vector{Float64}}(node => Float64[] for node in 1:graph.number_of_nodes())
+    start_step = max(1, t_execution - tolerance_steps + 1)
+    for step in start_step:t_execution
+        for node in 1:graph.number_of_nodes()
+            push!(flip_analysis[node], opinion_history[step, node])
         end
     end
 
-    # Compute the opinion distance between the node and the community
-    opinion_distance = abs(opinions[node] - community_opinion)
-
-    # Probability of node i adopting the state of a neighbor
-    Pi = 1 / (1 + exp((1 - opinion_distance) / λ))
-    return Pi
-end
-#-----------------------------------------------------------------------------------------------------------------------------------
-function local_interaction_update!(graph, opinions, node, communities, TRUST_LEVEL, λ)
-    # Local Interaction based on Multiscale Voter Model
-    neighbors = [n for n in graph.neighbors(node)]
-    
-    neighbor = rand(neighbors)
-    Pi = MVM(communities, opinions, node, λ)
-
-    if Pi < TRUST_LEVEL
-        opinions[node] = opinions[neighbor]
-    end
-end
-#-----------------------------------------------------------------------------------------------------------------------------------
-function global_influence_update!(graph, opinions, communities, GLOBAL_INFLUENCE, λ, TRUST_LEVEL)
-    global_opinion = GLOBAL_INFLUENCE
-
-    for node in graph.nodes()
-        Pi = MVM(communities, opinions, node, λ)
-        if Pi < TRUST_LEVEL
-            opinions[node] = global_opinion
+    # Calculate the fraction of nodes that flipped their opinion in the last tolerance steps
+    flip_fraction = 0.0
+    constant_positive_fraction = 0.0
+    constant_negative_fraction = 0.0
+    inestability_dict = Dict{Int, Int}()
+    for (node, opinions) in flip_analysis
+        all_values_equal = all(opinions .== opinions[1])
+        if !all_values_equal
+            flip_fraction += 1.0
+            inestability_dict[node] = 0
+        elseif opinions[1] > 0
+            constant_positive_fraction += 1.0
+            inestability_dict[node] = 1
+        elseif opinions[1] < 0
+            constant_negative_fraction += 1.0
+            inestability_dict[node] = -1
         end
     end
+    println("#Nodes Fliped: $(flip_fraction) - Constant Positive: $(constant_positive_fraction) - Constant Negative: $(constant_negative_fraction) \n")
+    flip_fraction /= length(flip_analysis)
+    constant_positive_fraction /= length(flip_analysis)
+    constant_negative_fraction /= length(flip_analysis)
+
+    # Convert the keys of inestability_dict to strings
+    inestability_dict = NetworkUtils.string_keys(inestability_dict)
+    return consensus, fraction_positive_final, fraction_negative_final, flip_fraction, constant_positive_fraction, constant_negative_fraction, inestability_dict
 end
 #-----------------------------------------------------------------------------------------------------------------------------------
-function different_opinions(opinions)
-    return length(unique(values(opinions))) > 1
+function compute_correlations(results)
+    λ_vals = [r["λ"] for r in results]
+    trust_vals = [r["trust_value"] for r in results]
+    global_period_vals = [r["global_period_value"] for r in results]
+    pmo_vals = [r["prob_majority_opinion"] for r in results]
+
+    consensus = [r["consensus"] for r in results]
+
+    correlations = Dict(
+        "λ" => abs(cor(λ_vals, consensus)),
+        "trust_value" => abs(cor(trust_vals, consensus)),
+        "global_period_value" => abs(cor(global_period_vals, consensus)),
+        "prob_majority_opinion" => abs(cor(pmo_vals, consensus))
+    )
+    return correlations
 end
 #-----------------------------------------------------------------------------------------------------------------------------------
-function initialize_opinions(communities, PROBABILITY_MAJORITY_OPINION)
-    opinions = Dict{String, Float64}()
-    for community in communities
-        majority_opinion = rand(OPINION_VALUE)
-        for node in community
-            if rand() < PROBABILITY_MAJORITY_OPINION
-                # Assign the majority opinion to a certain percentage of nodes
-                opinions[node] = majority_opinion
-            else
-                opinions[node] = rand(OPINION_VALUE)
-            end
-        end
+function visualize_fluctuation_analysis(graph, results, common_path)
+    # Create a directory for the fluctuation analysis results
+    mkpath("$common_path/fluctuation_analysis")
+
+    # Filter results for flip_fraction different than 0
+    positive_flip_fraction_results = filter(r -> r["flip_fraction"] != 0, results)
+    for r in positive_flip_fraction_results
+        λ = r["λ"]
+        trust_value = r["trust_value"]
+        global_period_value = r["global_period_value"]
+        prob_majority_opinion = r["prob_majority_opinion"]
+        
+        analysis = r["inestability_dict"]
+
+        path = "$common_path/fluctuation_analysis/λ_$(λ)_trust_$(trust_value)_gp_$(global_period_value)_pmo_$(prob_majority_opinion).html"
+
+        # Create a graph with each node's color representing the stable opinions (1 for positive, -1 for negative) and the instable opinions (0 for neutral)
+        Visualization.plot_network_instable_state(graph, analysis, path)
     end
-    return opinions
-end
-#-----------------------------------------------------------------------------------------------------------------------------------
-function initialize_trust_levels(graph)
-    positions = nx.spring_layout(graph)
-    maximum_distance = maximum([norm(positions[i] - positions[j]) for i in graph.nodes(), j in graph.nodes()]) # or radious
-
-    # Pre-allocate trust levels matrix
-    trust_levels = Dict(node => Dict() for node in graph.nodes())
-
-    for node in graph.nodes()
-        neighbors = [n for n in graph.neighbors(node)]
-        for neighbor in neighbors
-            normalized_distance = norm(positions[node] - positions[neighbor]) / maximum_distance
-            trust_levels[node][neighbor] = normalized_distance
-        end
-    end   
-    return trust_levels
 end
 #-----------------------------------------------------------------------------------------------------------------------------------
 end

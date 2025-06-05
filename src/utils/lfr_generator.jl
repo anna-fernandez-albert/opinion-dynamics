@@ -8,7 +8,7 @@ using Graphs
 using Statistics
 @pyimport networkx as nx
 
-export generate_lfr_networks
+export generate_lfr_networks, load_lfr_network
 #-----------------------------------------------------------------------------------------------------------------------------------
 function generate_lfr_network(N, μ, k_avg, k_max, name)
     name = "lfr_$(name)"
@@ -55,7 +55,7 @@ function generate_lfr_networks(N_list, μ_list, k_avg_list)
                 if isfile("$PATH_TO_NETWORKS/lfr_$(name).net")
                     println("Network '$name' already exists. Loading it...")
                     graph, communities = load_lfr_network(name, PATH_TO_NETWORKS)
-                    networks[name] = Dict(
+                    networks[(N, μ, k_avg)] = Dict(
                         "network" => graph,
                         "communities" => communities
                     )
@@ -66,7 +66,7 @@ function generate_lfr_networks(N_list, μ_list, k_avg_list)
                 network, communities = generate_lfr_network(N, μ, k_avg, k_max, name)
                 println("Generated network '$name' with N=$(N), μ=$(μ), k_avg=$(k_avg), k_max=$(k_max), and number of communities=$(length(communities))")
                 
-                networks[name] = Dict(
+                networks[(N, μ, k_avg)] = Dict(
                     "network" => network,
                     "communities" => communities
                 )
@@ -78,13 +78,9 @@ function generate_lfr_networks(N_list, μ_list, k_avg_list)
 end
 #-----------------------------------------------------------------------------------------------------------------------------------
 function save_lfr_network(graph, communities, name, path=PATH_TO_NETWORKS)
-    # Crear el directori si no existeix
     mkpath(path)
-    
-    # Desar xarxa en format Pajek
     nx.write_pajek(graph, "$path/$(name).net")
-    
-    # Desar comunitats
+
     open("$path/$(name)_communities.txt", "w") do file
         for community in communities
             write(file, join(community, " ") * "\n")

@@ -1,11 +1,11 @@
 include("./src/constants.jl")
 include("./src/utils/network_utils.jl")
-include("./src/simulations/model_simulation.jl")
+include("./src/utils/lfr_generator.jl")
 include("./src/simulations/model_parameters_analysis.jl")
 include("./src/simulations/lfr_analysis.jl")
 
 using .NetworkUtils
-using .OpinionSimulation
+using .LFRGenerator
 using .ModelAnalysis
 using .LFRAnalysis
 #-----------------------------------------------------------------------------------------------------------------------------------
@@ -16,46 +16,34 @@ mkpath(PATH_TO_RESULTS)
 
 function main()
     # Configuration of the study
-    run_unique_network = false
-    run_sensitivity_analysis = false
-    run_lfr_analysis = true
+    run_sensitivity_analysis = true
+    run_lfr_analysis = false
     
-    # 1. Network analysis
-    #   - Study of the opinion convergence/polarization evolution
-    #   - Study of the polarization/convergence as a function of the model parameters
-    #   - Study the opnion dynamics for bridge nodes
-    if run_unique_network
-        println("\n=== NETWORK ANALYSIS ===")
-        
-        name = "synthetic_network_N_300_blocks_5_prr_0.08_prs_0.02"
-        nx_graph, communities = NetworkUtils.load_network(name)
-        results = OpinionSimulation.run_model_analysis(nx_graph, communities, name)
-
-        NetworkUtils.save_network_analysis_results(results, name)
-        println("Network analysis finished")
-    end
-    
-    # 2. Model analysis
+    # 1. Model analysis
     #    - Study of the results due to the model parameters
     if run_sensitivity_analysis
-        println("\n=== MODEL PARAMETERS SENSITIBITY ANALYSIS ===")
+        println("\n=== MODEL PARAMETERS SENSIBILITY ANALYSIS ===")
+        mkpath("$PATH_TO_PLOTS/$(SENSITIVITY_ANALYSIS)")
 
-        name = "synthetic_network_N_300_blocks_5_prr_0.08_prs_0.02"
-        nx_graph, communities = NetworkUtils.load_network(name)
-        sensitivity_results = ModelAnalysis.run_model_sensitibily_analysis(nx_graph, communities)
+        name = "N_100_mu_0.5_k_avg_20"
+        if isfile("$PATH_TO_NETWORKS/lfr_$(name).net")
+            nx_graph, communities = LFRGenerator.load_lfr_network(name, PATH_TO_NETWORKS)
+        else
+            println("Generating network '$name'...")
+            nx_graph, communities = LFRGenerator.generate_lfr_networks([100], [0.5], [20])
+        end
 
-        NetworkUtils.save_sensitivity_analysis_results(sensitivity_results, name)
+        ModelAnalysis.run_model_sensibility_analysis(nx_graph, communities, name)
         println("Sensibility analysis finished")
     end
     
-    # 3. Opinion dynamics with LFR networks
+    # 2. Opinion dynamics with LFR networks
     #    - Study of the opinion dynamics due to the network structure
     if run_lfr_analysis
         println("\n=== OPINION DYNAMICS WITH LFR NETWORKS ===")
+        mkpath("$PATH_TO_PLOTS/$(LFR_ANALYSIS)")
         
-        networks, lfr_results = LFRAnalysis.run_lfr_analysis()
-
-        NetworkUtils.save_lfr_analysis(networks, lfr_results)
+        LFRAnalysis.run_lfr_analysis()
         println("LFR analysis finished")
     end
     
