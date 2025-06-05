@@ -3,6 +3,7 @@ module Visualization
 include("../constants.jl")
 using PyCall
 using Plots
+using Dierckx
 using Statistics
 using LinearAlgebra
 @pyimport networkx as nx
@@ -70,13 +71,12 @@ function plot_execution_vs_T(results, path)
     T_vals = [r["global_period_value"] for r in results]
     t_exec_vals = [r["t_execution"] for r in results]
     
-    p = scatter(T_vals, t_exec_vals, xlabel="Global Influence Period T", ylabel="Execution Time", markersize=4,alpha=0.7, color=:greys,  colorbar_title="Local Density")
-    
-    # Add mean trend line
+    p = plot(xlabel="Global Period T", ylabel="Execution Time (steps)")
+    # mean trend line
     T_unique = sort(unique(T_vals))
     mean_times = [mean([t_exec_vals[i] for i in 1:length(T_vals) if T_vals[i] == T]) for T in T_unique]
     
-    plot!(p, T_unique, mean_times, color=:red, linewidth=1, alpha=0.8, label="Mean Trend", lineestyle=:dash)
+    plot!(T_unique, mean_times, color=:darkblue, linewidth=1.5, label="Mean Trend", lineestyle=:dash)
     
     savefig(p, path)
 end
@@ -95,10 +95,10 @@ function plot_fluctuant_vs_tau(results, path)
     std_fluctuations = [std(grouped[τ]) for τ in taus]
 
     # Add confidence interval
-    plot!(p, taus, mean_fluctuations .+ std_fluctuations, fillto=mean_fluctuations .- std_fluctuations, alpha=0.3, color=:steelblue, label="±σ")
+    #p = plot(taus, mean_fluctuations .+ std_fluctuations, fillto=mean_fluctuations .- std_fluctuations, alpha=0.3, color=:steelblue, label="±σ")
     
-    p = plot(taus, mean_fluctuations, xlabel="Trust Value τ", ylabel="Mean Fluctuant Fraction", color=:steelblue, linewidth=1)
-    plot!(p, legend=:topright)
+    p = plot(taus, mean_fluctuations, xlabel="Trust Value τ", ylabel="Mean Fluctuant Fraction", color=:steelblue, linewidth=2)
+    plot!(p, legend=false)
     savefig(p, path)
 end
 #--Only for Parameter Sensibility---------------------------------------------------------------------------------------------------
@@ -114,12 +114,13 @@ function plot_fluctuant_vs_lambda(results, path)
     λs = sort(collect(keys(grouped)))
     mean_fluctuations = [mean(grouped[λ]) for λ in λs]
     std_fluctuations = [std(grouped[λ]) for λ in λs]
-
-    p = plot(λs, mean_fluctuations, xlabel="λ", ylabel="Mean Fluctuant Fraction", color=:crimson, linewidth=1)
-
     # Add confidence interval
-    plot!(p, λs, mean_fluctuations .+ std_fluctuations, fillto=mean_fluctuations .- std_fluctuations, alpha=0.3, color=:crimson, label="±σ")
-    plot!(p, legend=:topright)
+    #p = plot(λs, mean_fluctuations .+ std_fluctuations, fillto=mean_fluctuations .- std_fluctuations, alpha=0.3, color=:crimson, label="±σ")
+    
+    p = plot(λs, mean_fluctuations, xlabel="λ", ylabel="Mean Fluctuant Fraction", color=:crimson, linewidth=2)
+
+    plot!(p, legend=false)
+    xlims!(p, (0.2, maximum(λs)))
     savefig(p, path)
 end
 #--Only for Parameter Sensibility---------------------------------------------------------------------------------------------------
@@ -140,11 +141,11 @@ function plot_consensus_vs_tau(results, path)
     p = plot(taus, mean_consensus .+ std_consensus, fillto=mean_consensus .- std_consensus, alpha=0.3, color=:steelblue, label="±σ")
     
     # Mean trend line
-    plot!(p, taus, mean_consensus, color=:steelblue, linewidth=3, label="Mean Consensus")
+    plot!(p, taus, mean_consensus, color=:steelblue, linewidth=2, label="Mean Consensus")
 
-    plot!(p, taus, mean_consensus, label="Mean Consensus", color=:red, linewidth=1)
+    plot!(p, xlabel="Trust Value τ", ylabel="Mean Consensus")
     plot!(p, legend=:bottomright)
-    ylims!(p, (0, 1.05))
+    ylims!(p, (0.25, 1.25))
 
     savefig(p, path)
 end
@@ -166,76 +167,141 @@ function plot_consensus_vs_lambda(results, path)
     p = plot(λs, mean_consensus .+ std_consensus, fillto=mean_consensus .- std_consensus, alpha=0.3, color=:crimson, label="±σ")
     
     # Mean trend line (the key result!)
-    plot!(p, λs, mean_consensus, color=:crimson, linewidth=1, label="Mean Consensus")
-    
-    # Add reference lines
-    hline!(p, [0.5], color=:gray, linestyle=:dash, alpha=0.7, label="Random Consensus")
-    hline!(p, [1.0], color=:black, linestyle=:dash, alpha=0.7, label="Perfect Consensus")
+    plot!(p, λs, mean_consensus, color=:crimson, linewidth=2, label="Mean Consensus")
 
     # Add critical point annotation
+    # Compute the second derivative to find the inflection point
     λ_critical = λs[argmax(diff(mean_consensus))]
-    println("Critical point at λ = $λ_critical")
+    vline!(p, [λ_critical], color=:black, linestyle=:dash, linewidth=1, alpha=0.8, label="Critical Point (λ = $λ_critical)")
     
     # Formatting
     plot!(p, legend=:bottomright, grid=true, gridwidth=1, gridcolor=:lightgray)
-    ylims!(p, (0, 1.05))
-    
+    ylims!(p, (0.25, 1.25))
+    xlims!(p, (minimum(λs), maximum(λs)))
+    xlabel!(p, "λ")
+    ylabel!(p, "Mean Consensus")
     savefig(p, path)
 end
 #-----------------------------------------------------------------------------------------------------------------------------------
 #--Only for Structure Analysis------------------------------------------------------------------------------------------------------
 function plot_consensus_vs_mu(results, path)
+    """Consensus vs Mixing Parameter μ for different network configurations"""
+    
+    # Group by network configuration
     grouped = Dict{Tuple{Int, Int}, Vector{Tuple{Float64, Float64}}}()
     for r in results
         k = (r["N"], r["k_avg"])
         push!(get!(grouped, k, []), (r["μ"], r["consensus"]))
     end
 
-    p = plot(xlabel="μ", ylabel="Consensus")
+    colors = [:steelblue, :crimson, :forestgreen, :darkorange, :purple, :brown]
+    
+    p = plot(xlabel="μ (Mixing Parameter)", ylabel="Consensus")
+    color_idx = 1
     for ((N, k_avg), data) in grouped
-        sorted_data = sort(data, by=x->x[1])  # sort by μ
+        sorted_data = sort(data, by=x->x[1])
         mus = [x[1] for x in sorted_data]
         consensus_vals = [x[2] for x in sorted_data]
-        plot!(p, mus, consensus_vals)
+        
+        plot!(p, mus, consensus_vals, label="", color=colors[color_idx % length(colors) + 1], linewidth=1, alpha=0.8)
+        scatter!(p, mus, consensus_vals, color=colors[color_idx % length(colors) + 1], markersize=3, alpha=0.7, label="")
+        
+        color_idx += 1
     end
-    plot!(p, legend=false)
+    
+    plot!(p, legend=:false)
     savefig(p, path)
 end
 #--Only for Structure Analysis------------------------------------------------------------------------------------------------------
 function plot_consensus_vs_assortativity(results, path)
+    """Consensus vs Assortativity with trend analysis"""
+    
+    # Sort and extract data
     results = sort(results, by=r -> r["assortativity"])
     assortativities = [r["assortativity"] for r in results]
     consensus_vals = [r["consensus"] for r in results]
-    p = scatter(assortativities, consensus_vals, xlabel="Assortativity", ylabel="Consensus")
+    
+    # Color points by μ for additional insight
+    mu_vals = [r["μ"] for r in results]
+    
+    p = scatter(assortativities, consensus_vals, zcolor=mu_vals,
+               xlabel="Assortativity (r)", ylabel="Consensus",
+               markersize=4, alpha=0.7, color=:viridis, colorbar_title="μ (Mixing)")
+    
+    # Add trend line
+    trend_x = collect(minimum(assortativities):0.01:maximum(assortativities))
+    trend_y = polyfit(assortativities, consensus_vals, 1)(trend_x)
+    plot!(p, trend_x, trend_y, color=:red, linewidth=2, label="Trend Line", linestyle=:dash)
+
+    # Add critical point annotation
+    critical_idx = argmax(diff(trend_y))
+    print("Critical point (consensus vs assortativity) at r = $(trend_x[critical_idx])")
+    
+    plot!(p, legend=:bottomright)
     savefig(p, path)
 end
 #--Only for Structure Analysis------------------------------------------------------------------------------------------------------
 function plot_density_consensus_heatmap(results, path)
     Ns = sort(unique([r["N"] for r in results]))
     k_vals = sort(unique([r["k_avg"] for r in results]))
-    heatmap_data = [mean([r["consensus"] for r in results if r["N"] == N && r["k_avg"] == k]) for k in k_vals, N in Ns]
-    p = heatmap(Ns, k_vals, heatmap_data, xlabel="N", ylabel="<k>", size=(800, 800), color=:viridis)
+    
+    # Create heatmap data with proper handling of missing combinations
+    heatmap_data = zeros(length(k_vals), length(Ns))
+    for (i, k) in enumerate(k_vals)
+        for (j, N) in enumerate(Ns)
+            matching_results = filter(r -> r["N"] == N && r["k_avg"] == k, results)
+            if !isempty(matching_results)
+                heatmap_data[i, j] = mean([r["consensus"] for r in matching_results])
+            else
+                heatmap_data[i, j] = NaN  # Handle missing data
+            end
+        end
+    end
+    
+    p = heatmap(Ns, k_vals, heatmap_data, xlabel="Network Size (N)",  ylabel="Average Degree ⟨k⟩", size=(625, 600), color=:plasma, aspect_ratio=:auto)
+    
     savefig(p, path)
 end
 #--Only for Structure Analysis------------------------------------------------------------------------------------------------------
 function plot_polarization_vs_modularity(results, path)
     results = sort(results, by=r -> r["modularity"])
     modularities = [r["modularity"] for r in results]
-    polar_vals = [r["polarization"] for r in results]
+    polar_vals = [r["polarization_between_communities"] for r in results]
+
+    p = scatter(modularities, polar_vals, xlabel="Modularity", ylabel="Polarization Between Communities",
+               markersize=2, alpha=0.7)
+
+    # Add mean trend line
+    trend_x = collect(minimum(modularities):0.01:maximum(modularities))
+    trend_y = polyfit(modularities, polar_vals, 1)(trend_x)
+    plot!(p, trend_x, trend_y, color=:red, linewidth=1, label="Trend Line", linestyle=:dash)
+
     p = scatter(modularities, polar_vals, xlabel="Modularity", ylabel="Polarization between Communities")
     savefig(p, path)
 end
 #--Only for Structure Analysis------------------------------------------------------------------------------------------------------
 function plot_consensus_vs_av_path_length(results, path)
+    """Consensus vs Average Path Length with network size information"""
+    
     results = sort(results, by=r -> r["av_path_length"])
     av_path_lengths = [r["av_path_length"] for r in results]
     consensus_vals = [r["consensus"] for r in results]
-    p = scatter(av_path_lengths, consensus_vals, xlabel="Average Path Length", ylabel="Consensus")
+    
+    p = scatter(av_path_lengths, consensus_vals, xlabel="Average Path Length", ylabel="Consensus", markersize=4, alpha=0.7, color=:viridis)
+    
+    # Add trend line
+    trend_x = collect(minimum(av_path_lengths):0.01:maximum(av_path_lengths))
+    trend_y = polyfit(av_path_lengths, consensus_vals, 1)(trend_x)
+    
+    plot!(p, trend_x, trend_y, color=:red, linewidth=2, label="Trend Line", linestyle=:dash)
+    
+    plot!(p, grid=true, gridwidth=1, gridcolor=:lightgray, legend=:topright)
     savefig(p, path)
 end
 #--Only for Structure Analysis------------------------------------------------------------------------------------------------------
 function plot_consensus_vs_trust_level_different_net(results, path)
-    # For unique networks (N, μ, k_avg), save all consensus values for each trust level
+    """Trust effect across different network structures"""
+    # Group by network configuration
     grouped = Dict{Tuple{Int, Float64, Int}, Vector{Tuple{Float64, Float64}}}()
     for r in results
         k = (r["N"], r["μ"], r["k_avg"])
@@ -252,15 +318,18 @@ function plot_consensus_vs_trust_level_different_net(results, path)
         sorted_data = sort(data, by=x->x[1])  # sort by trust level
         trust_levels = [x[1] for x in sorted_data]
         consensus_vals = [x[2] for x in sorted_data]
-        plot!(p, trust_levels, consensus_vals, label="N=$N, μ=$μ, k_avg=$k_avg", color=reds[i])
+        plot!(p, trust_levels, consensus_vals, label="N=$N, μ=$μ, k_avg=$k_avg", linewidth=1.5, alpha=0.8, color=reds[i])
         i += 1
     end
     plot!(p, legend=false)
+    ylims!(p, (0, 1.05))
     savefig(p, path)
 end
 #--Only for Structure Analysis------------------------------------------------------------------------------------------------------
 function plot_consensus_vs_lambda_different_net(results, path)
-    # For unique networks (N, μ, k_avg), save all consensus values for each λ
+    """Lambda phase transitions across network structures"""
+    
+    # Group by network configuration
     grouped = Dict{Tuple{Int, Float64, Int}, Vector{Tuple{Float64, Float64}}}()
     for r in results
         k = (r["N"], r["μ"], r["k_avg"])
@@ -277,15 +346,18 @@ function plot_consensus_vs_lambda_different_net(results, path)
         sorted_data = sort(data, by=x->x[1])  # sort by λ
         lambdas = [x[1] for x in sorted_data]
         consensus_vals = [x[2] for x in sorted_data]
-        plot!(p, lambdas, consensus_vals, label="N=$N, μ=$μ, k_avg=$k_avg", color=blues[i])
+        plot!(p, lambdas, consensus_vals, label="N=$N, μ=$μ, k_avg=$k_avg", color=blues[i], linewidth=1.5, alpha=0.8)
         i += 1
     end
     plot!(p, legend=false)
+    ylims!(p, (0, 1.05))
     savefig(p, path)
 end
 #--Only for Structure Analysis------------------------------------------------------------------------------------------------------
 function plot_fluctuant_vs_lambda_different_net(results, path)
-    # For unique networks (N, μ, k_avg), save all fluctuant values for each λ
+    """Instability peaks across network structures"""
+    
+    # Group by network configuration
     grouped = Dict{Tuple{Int, Float64, Int}, Vector{Tuple{Float64, Float64}}}()
     for r in results
         k = (r["N"], r["μ"], r["k_avg"])
@@ -302,7 +374,7 @@ function plot_fluctuant_vs_lambda_different_net(results, path)
         sorted_data = sort(data, by=x->x[1])  # sort by λ
         lambdas = [x[1] for x in sorted_data]
         fluctuant_vals = [x[2] for x in sorted_data]
-        plot!(p, lambdas, fluctuant_vals, label="N=$N, μ=$μ, k_avg=$k_avg", color=blues[i])
+        plot!(p, lambdas, fluctuant_vals, label="N=$N, μ=$μ, k_avg=$k_avg", color=blues[i], linewidth=1.5, alpha=0.8)
         i += 1
     end
     plot!(p, legend=false)
@@ -310,7 +382,9 @@ function plot_fluctuant_vs_lambda_different_net(results, path)
 end
 #--Only for Structure Analysis------------------------------------------------------------------------------------------------------    
 function plot_fluctuant_vs_trust_level_different_net(results, path)
-    # For unique networks (N, μ, k_avg), save all fluctuant values for each trust level
+    """Trust effect on system stability across structures"""
+    
+    # Group by network configuration
     grouped = Dict{Tuple{Int, Float64, Int}, Vector{Tuple{Float64, Float64}}}()
     for r in results
         k = (r["N"], r["μ"], r["k_avg"])
@@ -327,10 +401,11 @@ function plot_fluctuant_vs_trust_level_different_net(results, path)
         sorted_data = sort(data, by=x->x[1])  # sort by trust level
         trust_levels = [x[1] for x in sorted_data]
         fluctuant_vals = [x[2] for x in sorted_data]
-        plot!(p, trust_levels, fluctuant_vals, label="N=$N, μ=$μ, k_avg=$k_avg", color=reds[i])
+        plot!(p, trust_levels, fluctuant_vals, label="N=$N, μ=$μ, k_avg=$k_avg", color=reds[i], linewidth=1.5, alpha=0.8)
         i += 1
     end
     plot!(p, legend=false)
+    ylims!(p, (0, 1.05))
     savefig(p, path)
 end
 #-----------------------------------------------------------------------------------------------------------------------------------

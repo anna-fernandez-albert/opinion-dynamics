@@ -19,41 +19,47 @@ function run_model_sensibility_analysis(graph, communities, name)
     size = graph.number_of_nodes()
     NUM_STEPS = 100 * size
     TOLERANCE_STEPS = 5 * size
-        
-    results = []
-    open("$PATH_TO_RESULTS/$(SENSITIVITY_ANALYSIS)_$(name).csv", "a") do file
-        write(file, "λ,trust_value,global_period_value,prob_majority_opinon,t_execution,consensus,fraction_positive_final,fraction_negative_final,flip_fraction,constant_positive_fraction,constant_negative_fraction\n")
     
-        for λ_val in λ_VALUES
-            for trust_val in LOCAL_TRUST_VALUES
-                for gp_val in GLOBAL_INFLUENCE_PERIODS
-                    for pmo_val in PROB_MAJORITY_OPINION_VALUES
-                        println("\n\nRunning simulation with λ=$λ_val, trust=$trust_val, gp=$gp_val, pmo=$pmo_val\n")
-                        println("The number of steps is: ", NUM_STEPS, " - Number of interactions per node: ", NUM_STEPS / size)
+    if isfile("$PATH_TO_RESULTS/$(SENSITIVITY_ANALYSIS)_$(name).csv")
+        println("File already exists, get the previous results")
 
-                        initial_opinions = OpinionDynamics.initialize_opinions(communities, OPINION_VALUES, pmo_val)
+        results = NetworkUtils.load_network_analysis_results("$PATH_TO_RESULTS/$(SENSITIVITY_ANALYSIS)_$(name).csv")
 
-                        opinion_history, t_execution = OpinionDynamics.run_simulation(graph, initial_opinions, communities, NUM_STEPS, gp_val, λ_val, trust_val, TOLERANCE_STEPS, GLOBAL_INFLUENCE)
-                        
-                        consensus, fraction_positive_final, fraction_negative_final, flip_fraction, constant_positive_fraction, constant_negative_fraction, inestability_dict = compute_metrics(graph, opinion_history, t_execution, TOLERANCE_STEPS)
-                        
-                        write(file, "$λ_val,$trust_val,$gp_val,$pmo_val,$t_execution,$consensus,$fraction_positive_final,$fraction_negative_final,$flip_fraction,$constant_positive_fraction,$constant_negative_fraction\n")
+    else
+        results = []
+        open("$PATH_TO_RESULTS/$(SENSITIVITY_ANALYSIS)_$(name).csv", "a") do file
+            write(file, "λ,trust_value,global_period_value,prob_majority_opinion,t_execution,consensus,fraction_positive_final,fraction_negative_final,flip_fraction,constant_positive_fraction,constant_negative_fraction,inestability_dict\n")
+        
+            for λ_val in λ_VALUES
+                for trust_val in LOCAL_TRUST_VALUES
+                    for gp_val in GLOBAL_INFLUENCE_PERIODS
+                        for pmo_val in PROB_MAJORITY_OPINION_VALUES
+                            println("\n\nRunning simulation with λ=$λ_val, trust=$trust_val, gp=$gp_val, pmo=$pmo_val\n")
+                            println("The number of steps is: ", NUM_STEPS, " - Number of interactions per node: ", NUM_STEPS / size)
 
-                        #Visualization.plot_opinion_evolution(opinion_history, "$(common_plots_path)/opinion_evolution_λ_$(λ_val)_trust_$(trust_val)_gp_$(gp_val)_pmo_$(pmo_val).png")
-                        push!(results, Dict(
-                            "λ" => λ_val,
-                            "trust_value" => trust_val,
-                            "global_period_value" => gp_val,
-                            "prob_majority_opinion" => pmo_val,
-                            "t_execution" => t_execution,
-                            "consensus" => consensus,
-                            "fraction_positive_final" => fraction_positive_final,
-                            "fraction_negative_final" => fraction_negative_final,
-                            "flip_fraction" => flip_fraction,
-                            "constant_positive_fraction" => constant_positive_fraction,
-                            "constant_negative_fraction" => constant_negative_fraction,
-                            "inestability_dict" => inestability_dict
-                        ))
+                            initial_opinions = OpinionDynamics.initialize_opinions(communities, OPINION_VALUES, pmo_val)
+
+                            opinion_history, t_execution = OpinionDynamics.run_simulation(graph, initial_opinions, communities, NUM_STEPS, gp_val, λ_val, trust_val, TOLERANCE_STEPS, GLOBAL_INFLUENCE)
+                            
+                            consensus, fraction_positive_final, fraction_negative_final, flip_fraction, constant_positive_fraction, constant_negative_fraction, inestability_dict = compute_metrics(graph, opinion_history, t_execution, TOLERANCE_STEPS)
+                            
+                            write(file, "$λ_val,$trust_val,$gp_val,$pmo_val,$t_execution,$consensus,$fraction_positive_final,$fraction_negative_final,$flip_fraction,$constant_positive_fraction,$constant_negative_fraction,$(inestability_dict)\n")
+
+                            push!(results, Dict(
+                                "λ" => λ_val,
+                                "trust_value" => trust_val,
+                                "global_period_value" => gp_val,
+                                "prob_majority_opinion" => pmo_val,
+                                "t_execution" => t_execution,
+                                "consensus" => consensus,
+                                "fraction_positive_final" => fraction_positive_final,
+                                "fraction_negative_final" => fraction_negative_final,
+                                "flip_fraction" => flip_fraction,
+                                "constant_positive_fraction" => constant_positive_fraction,
+                                "constant_negative_fraction" => constant_negative_fraction,
+                                "inestability_dict" => inestability_dict
+                            ))
+                        end
                     end
                 end
             end
