@@ -12,7 +12,6 @@ const GLOBAL_INFLUENCE = 1.0
 
 const PROBABILITY_MAJORITY_OPINION = 0.7
 const TRUST_LEVEL = 0.4
-const GLOBAL_PERIOD = 1000
 const λ_DEFAULT = 0.2
 
 # Simulation Parameters - SENSIBILITY ANALYSIS

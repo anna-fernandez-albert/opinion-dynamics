@@ -15,7 +15,7 @@ export run_model_sensibility_analysis
 #-----------------------------------------------------------------------------------------------------------------------------------
 function run_model_sensibility_analysis(graph, communities, name)
 
-    common_plots_path = "$PATH_TO_PLOTS/$(SENSITIVITY_ANALYSIS)"
+    common_plots_path = "$PATH_TO_PLOTS/$(SENSITIVITY_ANALYSIS)_$(name)"
     size = graph.number_of_nodes()
     NUM_STEPS = 100 * size
     TOLERANCE_STEPS = 5 * size
@@ -28,7 +28,7 @@ function run_model_sensibility_analysis(graph, communities, name)
     else
         results = []
         open("$PATH_TO_RESULTS/$(SENSITIVITY_ANALYSIS)_$(name).csv", "a") do file
-            write(file, "λ,trust_value,global_period_value,prob_majority_opinion,t_execution,consensus,fraction_positive_final,fraction_negative_final,flip_fraction,constant_positive_fraction,constant_negative_fraction,inestability_dict\n")
+            write(file, "λ,trust_value,global_period_value,prob_majority_opinion,t_execution,consensus,fraction_positive_final,fraction_negative_final,flip_fraction,constant_positive_fraction,constant_negative_fraction\n")
         
             for λ_val in λ_VALUES
                 for trust_val in LOCAL_TRUST_VALUES
@@ -43,7 +43,7 @@ function run_model_sensibility_analysis(graph, communities, name)
                             
                             consensus, fraction_positive_final, fraction_negative_final, flip_fraction, constant_positive_fraction, constant_negative_fraction, inestability_dict = compute_metrics(graph, opinion_history, t_execution, TOLERANCE_STEPS)
                             
-                            write(file, "$λ_val,$trust_val,$gp_val,$pmo_val,$t_execution,$consensus,$fraction_positive_final,$fraction_negative_final,$flip_fraction,$constant_positive_fraction,$constant_negative_fraction,$(inestability_dict)\n")
+                            write(file, "$λ_val,$trust_val,$gp_val,$pmo_val,$t_execution,$consensus,$fraction_positive_final,$fraction_negative_final,$flip_fraction,$constant_positive_fraction,$constant_negative_fraction\n")
 
                             push!(results, Dict(
                                 "λ" => λ_val,

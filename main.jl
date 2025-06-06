@@ -16,16 +16,16 @@ mkpath(PATH_TO_RESULTS)
 
 function main()
     # Configuration of the study
-    run_sensitivity_analysis = true
-    run_lfr_analysis = false
+    run_sensitivity_analysis = false
+    run_lfr_analysis = true
     
     # 1. Model analysis
     #    - Study of the results due to the model parameters
     if run_sensitivity_analysis
         println("\n=== MODEL PARAMETERS SENSIBILITY ANALYSIS ===")
-        mkpath("$PATH_TO_PLOTS/$(SENSITIVITY_ANALYSIS)")
 
-        name = "N_100_mu_0.5_k_avg_20"
+        name = "N_100_mu_0.1_k_avg_20"
+        mkpath("$PATH_TO_PLOTS/$(SENSITIVITY_ANALYSIS)_$(name)")
         if isfile("$PATH_TO_NETWORKS/lfr_$(name).net")
             nx_graph, communities = LFRGenerator.load_lfr_network(name, PATH_TO_NETWORKS)
         else

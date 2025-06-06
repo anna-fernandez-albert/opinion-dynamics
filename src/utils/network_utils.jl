@@ -64,6 +64,7 @@ function load_network_analysis_results(filepath)
     # Convert DataFrame to array of dictionaries
     results = []
     for row in eachrow(df)
+        println("Processing row: ", row)
         result = Dict(
             "λ" => row.λ,
             "trust_value" => row.trust_value,
@@ -83,6 +84,59 @@ function load_network_analysis_results(filepath)
     
     println("Successfully loaded $(length(results)) results using CSV.jl")
     return results
+end
+#-----------------------------------------------------------------------------------------------------------------------------------
+function load_lfr_analysis_results(filepath)
+    """
+    Load LFR analysis results from CSV file using CSV.jl
+    """
+    # Read CSV with proper type specification
+    df = CSV.read(filepath, DataFrame,
+                    types=Dict(
+                        :N => Int,
+                        :μ => Float64,
+                        :k_avg => Int,
+                        :modularity => Float64,
+                        :assortativity => Float64,
+                        :clustering_coefficient => Float64,
+                        :std_dev_community_size => Float64,
+                        :av_path_length => Float64,
+                        :λ => Float64,
+                        :trust_level => Float64,
+                        :t_execution => Int,
+                        :consensus => Float64,
+                        :consensus_per_community => Float64,
+                        :polarization_between_communities => Float64,
+                        :flip_fraction => Float64
+                    ),
+                    silencewarnings=true)
+    
+    # Convert DataFrame to array of dictionaries
+    results = []
+    for row in eachrow(df)
+        result = Dict(
+            "N" => row.N,
+            "μ" => row.μ,
+            "k_avg" => row.k_avg,
+            "modularity" => row.modularity,
+            "assortativity" => row.assortativity,
+            "clustering_coefficient" => row.clustering_coefficient,
+            "std_dev_community_size" => row.std_dev_community_size,
+            "av_path_length" => row.av_path_length,
+            "λ" => row.λ,
+            "trust_level" => row.trust_level,
+            "t_execution" => row.t_execution,
+            "consensus" => row.consensus,
+            "consensus_per_community" => row.consensus_per_community,
+            "polarization_between_communities" => row.polarization_between_communities,
+            "flip_fraction" => row.flip_fraction
+        )
+        push!(results, result)
+    end
+    
+    println("Successfully loaded $(length(results)) results using CSV.jl")
+    return results
+
 end
 #-----------------------------------------------------------------------------------------------------------------------------------
 end
