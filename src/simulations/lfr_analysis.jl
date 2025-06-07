@@ -1,13 +1,17 @@
 module LFRAnalysis
 
 include("../constants.jl")
+include("../utils/network_utils.jl")
 include("../utils/lfr_generator.jl")
 include("../model/opinion_dynamics.jl")
+include("../visualization/opinion_plots.jl")
 
 using PyCall
 using Statistics
 @pyimport networkx as nx
 
+using .Visualization
+using .NetworkUtils
 using .LFRGenerator
 using .OpinionDynamics
 
@@ -16,12 +20,12 @@ export run_lfr_analysis
 function run_lfr_analysis()
     # Create networks
     networks = LFRGenerator.generate_lfr_networks(N_VALUES, μ_VALUES, k_avg_VALUES)
-    common_plots_path = "$PATH_TO_PLOTS/$(SENSITIVITY_ANALYSIS)"
+    common_plots_path = "$PATH_TO_PLOTS/$(LFR_ANALYSIS)"
 
     if isfile("$PATH_TO_RESULTS/$(LFR_ANALYSIS).csv")
         println("File already exists, get the previous results")
 
-        results = NetworkUtils.load_network_analysis_results("$PATH_TO_RESULTS/$(SENSITIVITY_ANALYSIS)_$(name).csv")
+        results = NetworkUtils.load_lfr_analysis_results("$PATH_TO_RESULTS/$(LFR_ANALYSIS).csv")
 
     else
         open("$PATH_TO_RESULTS/$(LFR_ANALYSIS).csv", "a") do file
@@ -81,10 +85,12 @@ function run_lfr_analysis()
 
     correlations = compute_network_correlations(results)
     Visualization.plot_correlation_bars(correlations, "$(common_plots_path)/correlations.png")
-    Visualization.plot_consensus_vs_mu(results, "$(common_plots_path)/consensus_vs_mu.png")
     Visualization.plot_consensus_vs_assortativity(results, "$(common_plots_path)/consensus_vs_assortativity.png")
     Visualization.plot_consensus_vs_av_path_length(results, "$(common_plots_path)/consensus_vs_av_path_length.png")
-    Visualization.plot_polarization_vs_modulatity(results, "$(common_plots_path)/polarization_vs_modularity.png")
+    Visualization.plot_polarization_vs_modularity(results, "$(common_plots_path)/polarization_vs_modularity.png")
+    Visualization.plot_consensus_vs_modularity(results, "$(common_plots_path)/consensus_vs_modularity.png")
+    Visualization.plot_consensus_vs_std_dev_community_size(results, "$(common_plots_path)/consensus_vs_std_dev_community_size.png")
+    Visualization.plot_consensus_vs_clustering_coefficient(results, "$(common_plots_path)/consensus_vs_clustering_coefficient.png")
     Visualization.plot_density_consensus_heatmap(results, "$(common_plots_path)/consensus_heatmap.png")
 
     # Visualize trust level and λ influence on consensus and stability
@@ -93,6 +99,11 @@ function run_lfr_analysis()
     Visualization.plot_fluctuant_vs_lambda_different_net(results, "$(common_plots_path)/fluctuant_vs_lambda.png")
     Visualization.plot_fluctuant_vs_trust_level_different_net(results, "$(common_plots_path)/fluctuant_vs_trust_level.png")
     Visualization.heatmap_consensus_lambda_tau(results, "$(common_plots_path)/heatmap_consensus_lambda_tau.png")
+    Visualization.plot_consensus_vs_lambda_modularity(results, "$(common_plots_path)/consensus_vs_lambda_modularity.png")
+    Visualization.plot_consensus_vs_trust_level_modularity(results, "$(common_plots_path)/consensus_vs_trust_level_modularity.png")
+    Visualization.plot_fluctuant_vs_lambda_modularity(results, "$(common_plots_path)/fluctuant_vs_lambda_modularity.png")
+    Visualization.plot_fluctuant_vs_trust_level_modularity(results, "$(common_plots_path)/fluctuant_vs_trust_level_modularity.png")
+    
 end
 
 #-----------------------------------------------------------------------------------------------------------------------------------

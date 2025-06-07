@@ -155,6 +155,10 @@ function visualize_fluctuation_analysis(graph, results, common_path)
         prob_majority_opinion = r["prob_majority_opinion"]
         
         analysis = r["inestability_dict"]
+        if isempty(analysis)
+            println("No instable nodes found for λ=$(λ), trust=$(trust_value), gp=$(global_period_value), pmo=$(prob_majority_opinion). Skipping visualization.")
+            continue
+        end
 
         path = "$common_path/fluctuation_analysis/λ_$(λ)_trust_$(trust_value)_gp_$(global_period_value)_pmo_$(prob_majority_opinion).html"
 
