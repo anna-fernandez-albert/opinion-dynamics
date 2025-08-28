@@ -24,16 +24,18 @@ function main()
     if run_sensitivity_analysis
         println("\n=== MODEL PARAMETERS SENSIBILITY ANALYSIS ===")
 
-        name = "N_100_mu_0.7_k_avg_5"
+        model, parameters = "LFR", [5000, 0.2, 100]
+        name = "LFR_N_5000_mu_$(parameters[2])_k_avg_100"
+        println("Network name: $name")
         mkpath("$PATH_TO_PLOTS/$(SENSITIVITY_ANALYSIS)_$(name)")
-        if isfile("$PATH_TO_NETWORKS/lfr_$(name).net")
-            nx_graph, communities = LFRGenerator.load_lfr_network(name, PATH_TO_NETWORKS)
+        if isfile("$PATH_TO_NETWORKS/$(name).lgz")
+            graph, communities = NetworkUtils.load_network(name)
         else
             println("Generating network '$name'...")
-            nx_graph, communities = LFRGenerator.generate_lfr_networks([100], [0.5], [20])
+            graph, communities = NetworkUtils.generate_network(model, parameters, name)
         end
 
-        ModelAnalysis.run_model_sensibility_analysis(nx_graph, communities, name)
+        ModelAnalysis.run_model_sensibility_analysis(graph, communities, name)
         println("Sensibility analysis finished")
     end
     

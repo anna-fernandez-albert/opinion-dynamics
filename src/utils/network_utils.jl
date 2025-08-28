@@ -1,18 +1,20 @@
 module NetworkUtils
 
 include("../constants.jl")
+include("./lfr_generator.jl")
 using PyCall
 using Graphs
 using Statistics
 using Random
 using DataFrames
 using CSV
+using GraphCommunities
 @pyimport networkx as nx
 
-export load_network, detect_communities, save_network, save_network_analysis_results, save_sensitivity_analysis_results, save_lfr_analysis_results, string_keys, load_network_analysis_results
+export load_network, detect_communities, save_network, generate_network, save_network_analysis_results, save_sensitivity_analysis_results, save_lfr_analysis_results, string_keys, load_network_analysis_results
 #-----------------------------------------------------------------------------------------------------------------------------------
 function load_network(name::String)
-    filename = "$PATH_TO_NETWORKS/$(name).net"
+    filename = "$PATH_TO_NETWORKS/$(name).lgz"
     
     # Verify if the file exists
     if !isfile(filename)
@@ -20,23 +22,64 @@ function load_network(name::String)
     end
     
     # Load network
-    graph = nx.Graph(nx.read_pajek("$PATH_TO_NETWORKS/$name.net"))
+    graph = loadgraph(filename)
     
-    # List of communities
-    communities = detect_communities(graph)
-    
+    # Load communities
+    communities = []
+    open("$PATH_TO_NETWORKS/$(name)_communities.txt", "r") do f
+        for line in eachline(f)
+            nodes = parse.(Int, split(chomp(line)))
+            push!(communities, nodes)
+        end
+    end
     return graph, communities
 end
 #-----------------------------------------------------------------------------------------------------------------------------------
 function detect_communities(graph)
-    communities = nx.algorithms.community.louvain_communities(graph)
+    # transform Graphs.jl graph to NetworkX graph
+    nx_graph = nx.Graph([(src, dst) for src in vertices(graph) for dst in neighbors(graph, src) if src < dst])
+    communities = nx.algorithms.community.louvain_communities(nx_graph)
     communities = [collect(comm) for comm in communities]
     return communities
 end
 #-----------------------------------------------------------------------------------------------------------------------------------
-function save_network(graph, name::String)
-    filename = "$PATH_TO_NETWORKS/$(name).net"
-    nx.write_pajek(graph, filename)
+function save_network(graph, communities, name::String)
+    mkpath(PATH_TO_NETWORKS)
+    filename = "$PATH_TO_NETWORKS/$(name).lgz"
+
+    # Save the network in Pajek NET format
+    savegraph(filename, graph)
+
+    # Save the communities in a text file
+    open("$PATH_TO_NETWORKS/$(name)_communities.txt", "w") do f
+        for comm in communities
+            println(f, join(comm, " "))
+        end
+    end
+end
+#-----------------------------------------------------------------------------------------------------------------------------------
+function generate_network(model, parameters, name)
+    if model == "ER"
+        n::Integer, p::Real = parameters
+        graph = erdos_renyi(n, p)
+        communities = [collect(vertices(graph))]
+    elseif model == "WR"
+        n_ws::Integer, p_ws::Real, k::Integer = parameters
+        graph = watts_strogatz(n_ws, k, p_ws)
+        communities = [collect(vertices(graph))]
+    elseif model == "BA"
+        n_ba::Integer, m::Integer = parameters
+        graph = barabasi_albert(n_ba, m)
+        communities = [collect(vertices(graph))]
+    elseif model == "LFR"
+        n_lfr::Integer, μ::Real, k_avg::Integer = parameters
+        k_max = min(floor(Int, 3*k_avg), n_lfr - 1)
+        graph, communities = LFRGenerator.generate_lfr_network(n_lfr, μ, k_avg, k_max, name)
+    else
+        error("Unknown model: $model")
+    end
+    save_network(graph, communities, name)
+    return graph, communities
 end
 #-----------------------------------------------------------------------------------------------------------------------------------
 function string_keys(dict::Dict{Int, T}) where T
