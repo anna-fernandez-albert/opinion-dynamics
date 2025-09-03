@@ -5,3 +5,4 @@ Soft-Community-Networks-S1/networks/
 .DS_Store
 lib/
 lfr_analysis.py
+analysis/

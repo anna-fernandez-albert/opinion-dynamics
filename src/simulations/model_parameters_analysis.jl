@@ -3,7 +3,7 @@ include("../constants.jl")
 include("../utils/network_utils.jl")
 include("../model/opinion_dynamics.jl")
 include("../visualization/opinion_plots.jl")
-using PyCall
+
 using Statistics
 using Graphs
 using CSV, DataFrames

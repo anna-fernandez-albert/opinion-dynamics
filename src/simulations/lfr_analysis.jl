@@ -6,12 +6,10 @@ include("../utils/lfr_generator.jl")
 include("../model/opinion_dynamics.jl")
 include("../visualization/opinion_plots.jl")
 
-using PyCall
 using Statistics
 using Graphs
 using Graphs: modularity, assortativity, global_clustering_coefficient
 using CSV, DataFrames
-@pyimport networkx as nx
 
 using .Visualization
 using .NetworkUtils

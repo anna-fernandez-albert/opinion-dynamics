@@ -24,8 +24,8 @@ function main()
     if run_sensitivity_analysis
         println("\n=== MODEL PARAMETERS SENSIBILITY ANALYSIS ===")
 
-        model, parameters = "LFR", [5000, 0.2, 100]
-        name = "LFR_N_5000_mu_$(parameters[2])_k_avg_100"
+        model, parameters = "BA", [5000, 50]
+        name = "BA_N_$(parameters[1])_m_$(parameters[2])"
         println("Network name: $name")
         mkpath("$PATH_TO_PLOTS/$(SENSITIVITY_ANALYSIS)_$(name)")
         if isfile("$PATH_TO_NETWORKS/$(name).lgz")
